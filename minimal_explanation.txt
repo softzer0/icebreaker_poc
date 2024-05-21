@@ -1,0 +1,40 @@
+Check if already exists:
+{'device_id': DEVICE ID}
+-> {'name': NAME} OR {'error': -1}
+
+Creation:
+{'device_id': DEVICE ID, 'lat': LATITUDE, 'lng': LONGITUDE, 'alt': ALTITUDE, 'name': NAME, 'image': BASE64 ENCODED IMAGE 480x480 JPG}
+-> {'token': TOKEN, 'results': [RESULTS]}
+
+On each dozen seconds or so, or when position is changed by a few meters, the update routine has to be executed with the following request:
+{'token': TOKEN, 'lat': LATITUDE, 'lng': LONGITUDE, 'alt': ALTITUDE}
+-> {[...,] 'results': [RESULTS]}
+
+When initial coordinates or altitude is far-off current one past MAX_DISTANCE, it returns MUST_REFRESH_PICTURE error. So it needs to be refreshed with the request from above, but this time with 'image' parameter in it, of course:
+{'token': TOKEN, 'lat': LATITUDE, 'lng': LONGITUDE, 'alt': ALTITUDE, 'image': BASE64 ENCODED IMAGE 480x480 JPG}
+-> {[...,] 'results': [RESULTS]}
+
+RESULTS = [{'name': NAME, 'img_name': IMG_NAME, 'img_refreshed': IMG_REFRESHED, 'not_nudged': NOT_NUDGED, 'distance': METERS, 'last_seen': SECONDS}, ...]
+NOT_NUDGED = Number of times nudge has been sent but wasn't delivered. Changes to 0 once it's delivered.
+IMG_REFRESHED = Counter indicating how many times image has been refreshed (useful for finding out whether the image needs to be reloaded).
+
+For a nudge request, just pass 'nudge' parameter with the value of 'img_name' of the target:
+{'token': TOKEN, 'lat': LATITUDE, 'lng': LONGITUDE, 'alt': ALTITUDE, 'nudge': IMG_NAME}
+The initiator must wait for a minute before he sends another nudge, and the receiver has the same time to notice and answer to the incoming nudge.
+Once the nudge has been initiated by the request from above, both the sender and the receiver will only see each other until the receiver rejects the nudge or the busy interval expires:
+-> {[error: N,] 'initiator': true, 'answered': false, 'results': [RESULT]}
+RESULT = [{'name': NAME, 'img_name': IMG_NAME, 'img_refreshed': IMG_REFRESHED, 'distance': METERS, 'nudge_created': TIMESTAMP, 'last_seen': SECONDS}]
+'initiator' = Sets to true for the response to the sender, false for the receiver.
+
+If the target wants to answer to the nudge, then this request needs to be sent:
+{'token': TOKEN, 'lat': LATITUDE, 'lng': LONGITUDE, 'alt': ALTITUDE, 'answer': true OR false}
+Once the answer is set to 'true', both the sender and the target will become active (in the database, 'active' field will be filled with each other's 'img_name' parameter values), so the responses for both will continue to have only each other shown in the 'results' field, with slight field modifications:
+-> {[error: N,] 'initiator': false, 'answered': true, 'results': [RESULT]}
+RESULT from now on contains the other person from the correspondence but with additional parameters for coordinates with altitude:
+RESULT = [{'name': NAME, 'img_name': IMG_NAME, 'img_refreshed': IMG_REFRESHED, 'lat': LATITUDE, 'lng': LONGITUDE, 'alt': ALTITUDE, 'distance': METERS, 'nudge_created': TIMESTAMP, 'last_seen': SECONDS}]
+
+Both persons are able to cancel this either by getting far away from each other (above MAX_DISTANACE meters), or by sending the request for that:
+{'token': TOKEN, 'lat': LATITUDE, 'lng': LONGITUDE, 'alt': ALTITUDE, 'cancel': true}
+-> {[error: N,] 'results': [RESULTS]}
+
+Note that every error which isn't directly affecting the user (sending nudge, accepting answer, canceling and such) will normally return RESULT(S) along with it.
